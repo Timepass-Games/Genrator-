@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📱 Phone Game Site Generator</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; background: #f5f7fa; color: #1e293b; }
+        h1 { font-size: 1.8rem; }
+        input, button { display: block; width: 100%; padding: 12px; margin: 20px 0; border-radius: 8px; border: 1px solid #ccc; }
+        button { background: #2563eb; color: white; font-weight: bold; border: none; cursor: pointer; }
+        .note { background: #e2e8f0; padding: 15px; border-radius: 8px; font-size: 0.9rem; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <h1>📦 Game Site Generator (works on phone)</h1>
+    <p>Upload your <code>games.csv</code> (columns: <strong>Name,Icon,Link,Category,Description</strong>) and download a complete static website.</p>
+    <input type="file" id="csvFile" accept=".csv">
+    <button id="generateBtn">Generate & Download ZIP</button>
+    <div class="note">
+        <p><strong>How to use:</strong></p>
+        <ol>
+            <li>Tap "Choose File" and select your CSV.</li>
+            <li>Tap "Generate & Download ZIP".</li>
+            <li>Wait a few seconds – the ZIP will download automatically.</li>
+            <li>Extract the ZIP on your phone (use a file manager like ZArchiver).</li>
+            <li>Upload the extracted folder to any web host.</li>
+        </ol>
+        <p>The generated site includes separate pages for each game and category, plus a searchable homepage, sitemap, and robots.txt – all SEO‑friendly.</p>
+    </div>
+
+    <script>
+        document.getElementById('generateBtn').addEventListener('click', function () {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert('Please select a CSV file.');
+                return;
+            }
+
+            PapaParse.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function (results) {
+                    const games = results.data.filter(row => row.Name && row.Name.trim() !== '' && row.Link && row.Link.trim() !== '');
+                    if (games.length === 0) {
+                        alert('No valid game rows found.');
+                        return;
+                    }
+                    generateSite(games);
+                },
+                error: function (err) {
+                    alert('CSV parsing error: ' + err);
+                }
+            });
+        });
+
+        function createSlug(name) {
+            return name.toLowerCase()
+                .replace(/[^\w\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/--+/g, '-')
+                .replace(/^-+|-+$/g, '');
+        }
+
+        function generateSite(games) {
+            const zip = new JSZip();
+
+            // 1. Collect categories
+            const categoryMap = new Map();
+            games.forEach(game => {
+                if (game.Category) {
+                    game.Category.split(',').map(c => c.trim()).filter(c => c).forEach(cat => {
+                        if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+                        categoryMap.get(cat).push(game);
+                    });
+                }
+            });
+            const categories = Array.from(categoryMap.keys()).sort();
+
+            // 2. Create style.css
+            const styleCss = `* { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',sans-serif; }
+body { background:#0f172a; color:#e2e8f0; }
+.container { max-width:1400px; margin:0 auto; padding:20px; }
+header { background:#1e293b; padding:20px; border-radius:12px; margin-bottom:30px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px; }
+.logo a { font-size:2rem; font-weight:700; background:linear-gradient(135deg,#94a3b8,#cbd5e1); -webkit-background-clip:text; -webkit-text-fill-color:transparent; text-decoration:none; }
+.search-bar { flex:1; max-width:400px; }
+.search-bar input { width:100%; padding:12px 20px; border:none; border-radius:30px; background:#334155; color:#f1f5f9; font-size:1rem; outline:none; }
+.nav-btn { background:#334155; border:none; color:#e2e8f0; padding:8px 16px; border-radius:30px; cursor:pointer; text-decoration:none; }
+.categories-section { margin-bottom:40px; }
+.categories-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:15px; }
+.category-chip { background:#1e293b; color:#cbd5e1; padding:8px 20px; border-radius:30px; font-size:0.9rem; font-weight:500; cursor:pointer; border:1px solid #334155; text-decoration:none; display:inline-block; }
+.category-chip:hover { background:#2d3b4f; border-color:#60a5fa; color:white; }
+.games-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:20px; margin-top:20px; }
+.game-card { background:#1e293b; border-radius:12px; overflow:hidden; transition:0.2s; cursor:pointer; border:1px solid #334155; }
+.game-card:hover { transform:translateY(-5px); box-shadow:0 20px 25px -5px rgba(0,0,0,0.5); border-color:#60a5fa; }
+.game-card img { width:100%; aspect-ratio:16/9; object-fit:cover; background:#0f172a; }
+.game-card .info { padding:12px; }
+.game-card h3 { font-size:1rem; font-weight:600; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#f1f5f9; }
+.game-card .categories { display:flex; flex-wrap:wrap; gap:5px; font-size:0.7rem; color:#94a3b8; }
+.game-card .categories span { background:#334155; padding:2px 8px; border-radius:20px; text-transform:capitalize; }
+.footer { margin-top:50px; text-align:center; color:#64748b; font-size:0.9rem; }
+.game-frame-container { position:relative; width:100%; margin:20px 0; border-radius:16px; overflow:hidden; background:#000; aspect-ratio:16/9; }
+.game-frame { width:100%; height:100%; border:none; }
+.fullscreen-btn { position:absolute; bottom:15px; right:15px; background:rgba(0,0,0,0.6); color:white; border:none; border-radius:8px; padding:8px 16px; cursor:pointer; backdrop-filter:blur(5px); border:1px solid #ffffff40; }
+.detail-header { display:flex; gap:20px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+.detail-header img { width:80px; height:80px; border-radius:12px; object-fit:cover; }
+.detail-header h1 { font-size:1.8rem; color:#f1f5f9; }
+.detail-meta { display:flex; gap:10px; flex-wrap:wrap; }
+.category-tag { background:#334155; padding:4px 16px; border-radius:30px; text-transform:capitalize; }
+.description { background:#0f172a; padding:20px; border-radius:12px; white-space:pre-wrap; margin-top:20px; }
+.back-btn { background:#334155; color:white; border:none; padding:8px 20px; border-radius:30px; cursor:pointer; margin-bottom:20px; }`;
+            zip.file('style.css', styleCss);
+
+            // 3. Index.html (homepage with search and categories)
+            const gamesJson = JSON.stringify(games);
+            const categoryLinks = categories.map(cat => `<a href="category/${encodeURIComponent(cat)}.html" class="category-chip">${cat}</a>`).join('');
+            const indexHtml = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unblocked Games Hub</title><link rel="stylesheet" href="style.css"></head>
+<body><div class="container"><header><div class="logo"><a href="index.html">🎮 Unblocked Hub</a></div><div class="search-bar"><input type="text" id="searchInput" placeholder="Search games..."></div><nav><a href="index.html" class="nav-btn">Home</a><button class="nav-btn" id="randomBtn">Random</button></nav></header><main><div class="categories-section"><h2>Categories</h2><div class="categories-grid"><a href="index.html" class="category-chip">All</a>${categoryLinks}</div></div><div class="games-grid" id="gamesGrid"></div></main><footer class="footer">© 2025 Unblocked Games Hub</footer></div>
+<script>const games = ${gamesJson};
+function createSlug(n){return n.toLowerCase().replace(/[^\\w\\s-]/g,'').replace(/\\s+/g,'-').replace(/--+/g,'-').replace(/^-+|-+$/g,'');}
+function render(f){const grid=document.getElementById('gamesGrid');grid.innerHTML=f.map(g=>{const s=createSlug(g.name);const i=g.icon||'https://via.placeholder.com/180x100?text=No+Icon';const c=g.category?g.category.split(',').map(c=>c.trim()).join('</span><span>'):'';return \`<div class="game-card" onclick="window.location='game/\${s}.html'"><img src="\${i}" alt="\${g.name}" onerror="this.src='https://via.placeholder.com/180x100?text=No+Icon'"><div class="info"><h3>\${g.name}</h3><div class="categories"><span>\${c}</span></div></div></div>\`;}).join('');}
+render(games);
+document.getElementById('searchInput').addEventListener('input',e=>{const t=e.target.value.toLowerCase();const f=games.filter(g=>g.name.toLowerCase().includes(t)||(g.description&&g.description.toLowerCase().includes(t)));render(f);});
+document.getElementById('randomBtn').addEventListener('click',()=>{const r=games[Math.floor(Math.random()*games.length)];window.location='game/'+createSlug(r.name)+'.html';});
+</script></body></html>`;
+            zip.file('index.html', indexHtml);
+
+            // 4. Category folders and pages
+            categories.forEach(cat => {
+                const catGames = categoryMap.get(cat);
+                const gamesHtml = catGames.map(game => {
+                    const slug = createSlug(game.name);
+                    const icon = game.icon || 'https://via.placeholder.com/180x100?text=No+Icon';
+                    const cats = game.Category ? game.Category.split(',').map(c=>c.trim()).join('</span><span>') : '';
+                    return `<div class="game-card" onclick="window.location='../game/${slug}.html'"><img src="${icon}" alt="${game.name}" onerror="this.src='https://via.placeholder.com/180x100?text=No+Icon'"><div class="info"><h3>${game.name}</h3><div class="categories"><span>${cats}</span></div></div></div>`;
+                }).join('');
+                const catHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${cat} Games - Unblocked Hub</title><link rel="stylesheet" href="../style.css"></head>
+<body><div class="container"><header><div class="logo"><a href="../index.html">🎮 Unblocked Hub</a></div><nav><a href="../index.html" class="nav-btn">Home</a></nav></header><main><h1>Category: ${cat}</h1><div class="games-grid">${gamesHtml}</div></main><footer class="footer">© 2025 Unblocked Games Hub</footer></div></body></html>`;
+                zip.file(`category/${encodeURIComponent(cat)}.html`, catHtml);
+            });
+
+            // 5. Individual game pages
+            games.forEach(game => {
+                const slug = createSlug(game.name);
+                const icon = game.icon || 'https://via.placeholder.com/80x80?text=No+Icon';
+                const cats = game.Category ? game.Category.split(',').map(c=>c.trim()).map(c=>`<span class="category-tag">${c}</span>`).join('') : '';
+                const desc = (game.Description || 'No description.').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
+                const gameHtml = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${game.name} - Play Unblocked</title><meta name="description" content="${game.Description ? game.Description.substring(0,160).replace(/"/g,'&quot;') : 'Play this game online'}"><link rel="stylesheet" href="../style.css"></head>
+<body><div class="container"><button class="back-btn" onclick="history.back()">← Back</button><div class="detail-view"><div class="detail-header"><img src="${icon}" alt="${game.name}" onerror="this.src='https://via.placeholder.com/80x80?text=No+Icon'"><div><h1>${game.name}</h1><div class="detail-meta">${cats}</div></div></div><div class="game-frame-container"><iframe class="game-frame" src="${game.Link}" allowfullscreen allow="autoplay; fullscreen; gamepad *; clipboard-write;" loading="lazy"></iframe><button class="fullscreen-btn" onclick="this.previousElementSibling.requestFullscreen()">⛶ Fullscreen</button></div><div class="description">${desc}</div></div><footer class="footer">© 2025 Unblocked Games Hub</footer></div></body></html>`;
+                zip.file(`game/${slug}.html`, gameHtml);
+            });
+
+            // 6. sitemap.xml
+            const urls = ['index.html', ...categories.map(c=>`category/${encodeURIComponent(c)}.html`), ...games.map(g=>`game/${createSlug(g.name)}.html`)];
+            const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u=>`  <url><loc>https://yourdomain.com/${u}</loc></url>`).join('\n')}\n</urlset>`;
+            zip.file('sitemap.xml', sitemap);
+
+            // 7. robots.txt
+            zip.file('robots.txt', 'User-agent: *\nAllow: /\nSitemap: https://yourdomain.com/sitemap.xml');
+
+            // Generate and download ZIP
+            zip.generateAsync({ type: 'blob' }).then(function (blob) {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'games-site.zip';
+                link.click();
+                URL.revokeObjectURL(link.href);
+            });
+        }
+    </script>
+</body>
+</html>
